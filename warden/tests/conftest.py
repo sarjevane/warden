@@ -5,7 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
 import pytest
 import pytest_asyncio
-from warden.config.config import Config, DatabaseConfig
+from warden.config.config import Config, SqliteConfig
 from warden.app import create_app
 from warden.db.database import Base
 
@@ -14,7 +14,7 @@ from warden.api.auth.auth import MungeIdentity, munge_identity
 
 @pytest.fixture
 def config():
-    db_config = DatabaseConfig(name="warden_tests.db", backend="sqlite", echo=False)
+    db_config = SqliteConfig(name="warden_tests.db", backend="sqlite", echo=False)
     yield Config(database=db_config)
 
 

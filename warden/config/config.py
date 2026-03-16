@@ -49,8 +49,7 @@ class Config(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
-        def yaml_config_source():
-            path = Path("warden/config/config.yaml")
+        def _load_config_file(path: Path):
             if not path.exists():
                 return {}
 
@@ -59,9 +58,16 @@ class Config(BaseSettings):
 
             return data
 
+        def yaml_default_config():
+            return _load_config_file(Path("warden/config/config.sample.yaml"))
+
+        def yaml_config_source():
+            return _load_config_file(Path("warden/config/config.yaml"))
+
         return (
             env_settings,         # Highest precedence: from env variables
             init_settings,        # from Config(...)
             dotenv_settings,      # from .env
-            yaml_config_source,   # Lowest precedence: from yaml
+            yaml_config_source,   # Lower precedence: from yaml
+            yaml_default_config,  # Lowest precedence: default config file
         )
