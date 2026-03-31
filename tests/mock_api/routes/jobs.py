@@ -6,8 +6,7 @@ from ..models import StandardResponse
 from ..models.jobs import JobCreation, Job, JobStatus
 from ..models.program import Program, ProgramStatus
 from ..db import FAKE_JOB_DB, FAKE_PROGRAM_DB
-
-FAKE_RESULTS = str({"counters": {"0001": 1, "0010": 2, "0100": 3, "1000": 4}})
+from ..samples import FAKE_RESULTS
 
 router = APIRouter(prefix="/jobs")
 
@@ -57,8 +56,6 @@ async def get_job(uid: int) -> StandardResponse[Job]:
         message="Found job", 
         data=job,
         status="OK")
-
-
 
 @router.put("/{uid}/cancel")
 async def cancel_job(uid: int) -> StandardResponse[Job]:

@@ -1,7 +1,10 @@
+"""Mock PasqOS api for Warden testing and development"""
+
 from fastapi import FastAPI
 
 from .routes import jobs, programs, system
 
+PREFIX = "/api/v1"
 
 def create_app():
     app = FastAPI(
@@ -10,9 +13,9 @@ def create_app():
         version="0.1.0",
     )
 
-    app.include_router(prefix="/api/v1", router=jobs.router)
-    app.include_router(prefix="/api/v1", router=programs.router)
-    app.include_router(prefix="/api/v1", router=system.router)
+    app.include_router(prefix=PREFIX, router=jobs.router)
+    app.include_router(prefix=PREFIX, router=programs.router)
+    app.include_router(prefix=PREFIX, router=system.router)
 
     @app.get("/")
     async def hello():
