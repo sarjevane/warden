@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -27,7 +27,7 @@ class Context(BaseModel):
 
 class Job(BaseModel):
     uid: int
-    datetime: datetime
+    datetime: "datetime"
 
     nb_run: int
 
@@ -45,9 +45,9 @@ class Job(BaseModel):
 
     status: JobStatus
 
-    created_datetime: datetime | None = None
-    start_datetime: datetime | None = None
-    end_datetime: datetime | None = None
+    created_datetime: Optional["datetime"] = None
+    start_datetime: Optional["datetime"] = None
+    end_datetime: Optional["datetime"] = None
 
     progress: dict[str, Any] | None = None
 
