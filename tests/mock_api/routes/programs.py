@@ -1,3 +1,5 @@
+"""Mock PasqOS Programs API route"""
+
 from fastapi import APIRouter, HTTPException
 
 from ..db import FAKE_PROGRAM_DB
@@ -10,12 +12,13 @@ router = APIRouter(prefix="/programs")
 @router.get("/{uid}", response_model=StandardResponse[Program])
 async def get_program(uid: int):
     if uid not in FAKE_PROGRAM_DB:
-        raise HTTPException(404, "Program uid does not exist")
+        # TODO: improve PasqOS error mimicking
+        raise HTTPException(400, "Bad request")
     program = FAKE_PROGRAM_DB[uid]
     # TODO: Handle other cases
     program.status = ProgramStatus.RUNNING
     return StandardResponse(
         code=200,
-        message="Program found",
+        message="OK.",
         data=program,
     )

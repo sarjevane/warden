@@ -1,3 +1,5 @@
+"""Mock PasqOS jobs API route"""
+
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -33,13 +35,15 @@ async def create_job(job_model: JobCreation) -> StandardResponse[Job]:
     )
     FAKE_PROGRAM_DB[new_uid] = new_program
     FAKE_JOB_DB[new_uid] = new_job
-    return StandardResponse(code=200, message="Created job", data=new_job, status="OK")
+    # We don't really care about the message, only about the data
+    return StandardResponse(code=200, message="OK.", data=new_job)
 
 
 @router.get("/{uid}")
 async def get_job(uid: int) -> StandardResponse[Job]:
     if uid not in FAKE_JOB_DB.keys():
-        raise HTTPException(404, "Job does not exist")
+        # TODO: improve PasqOS error mimicking
+        raise HTTPException(400, "Bad request")
     # TODO implement job logic here
     job = FAKE_JOB_DB[uid]
     if job.status == JobStatus.PENDING:
@@ -49,15 +53,16 @@ async def get_job(uid: int) -> StandardResponse[Job]:
         job.status = JobStatus.DONE
         job.result = FAKE_RESULTS
         job.end_datetime = datetime.now()
-    return StandardResponse(code=200, message="Found job", data=job, status="OK")
+    return StandardResponse(code=200, message="OK.", data=job)
 
 
 @router.put("/{uid}/cancel")
 async def cancel_job(uid: int) -> StandardResponse[Job]:
     if uid not in FAKE_JOB_DB.keys():
-        raise HTTPException(404, "Job does not exist")
+        # TODO: improve PasqOS error mimicking
+        raise HTTPException(400, "Bad request")
     job = FAKE_JOB_DB[uid]
     job.status = JobStatus.CANCELED
     program = FAKE_PROGRAM_DB[job.program_id]
     program.status = ProgramStatus.CANCELED
-    return StandardResponse(code=200, message="Job canceled", data=job, status="OK")
+    return StandardResponse(code=200, message="OK.", data=job)

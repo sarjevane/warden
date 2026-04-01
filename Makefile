@@ -31,7 +31,7 @@ migrate:
 
 # dev/contributors methods
 
-.PHONY: install-dev start-dev test lint-check lint-fix update-requirements run-db alembic
+.PHONY: install-dev start-dev start-mock-pasqos start-mock-pasqos-dev test lint-check lint-fix update-requirements run-db alembic
 
 install-dev:
 	@test -f warden/lib/config/config.yaml || $(MAKE) init-config
@@ -41,6 +41,12 @@ install-dev:
 
 start-dev: migrate
 	poetry run python -m debugpy --listen 0.0.0.0:8888 -m uvicorn warden.api.main:app --reload --host 0.0.0.0 --port 4207
+
+start-mock-pasqos:
+	fastapi run tests/mock_api/app.py
+
+start-mock-pasqos-dev:
+	fastapi run tests/mock_api/app.py --reload
 
 test:
 	poetry run pytest

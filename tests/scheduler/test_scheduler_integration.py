@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from mock_api.app import create_app
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -19,12 +18,12 @@ SLURM_USER_ID = "1234"
 
 
 @pytest.fixture
-def mock_api_client():
+def mock_api_client(mock_api_app):
     # The fastapi TestClient is based on the HTTPX client and should
     # have the same behavior/api as the sync HTTPX client
     # we can thus safely inject it into the test
     # https://fastapi.tiangolo.com/tutorial/testing/
-    with TestClient(app=create_app(), base_url=BASE_URI_MOCK_API) as client:
+    with TestClient(app=mock_api_app, base_url=BASE_URI_MOCK_API) as client:
         yield client
 
 

@@ -19,13 +19,13 @@ def create_app():
     app.include_router(prefix=PREFIX, router=system.router)
 
     @app.get("/")
-    async def hello():
+    async def ping():
         return {"message", "Mocked PasqOS API is up."}
 
     return app
 
 
-app = create_app()
-
-if __name__ == "__main__":
+# Only creating app object if called from root of repo
+# with makefile target
+if __name__ == "mock_api.app":
     app = create_app()

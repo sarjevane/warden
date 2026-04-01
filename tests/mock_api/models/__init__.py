@@ -11,9 +11,9 @@ T = TypeVar("T")
 
 class StandardResponse(BaseModel, Generic[T]):
     code: int
-    message: str
+    message: str = "OK."
     data: T
-    status: str = "OK"
+    status: str = "success"
 
 
 __all__ = ["Job", "Program", "QPU", "QPUOperational"]
