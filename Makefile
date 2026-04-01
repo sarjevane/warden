@@ -35,7 +35,7 @@ migrate:
 
 install-dev:
 	@test -f warden/lib/config/config.yaml || $(MAKE) init-config
-	python -m pip install poetry==2
+	python -m pip install poetry==2.3.3
 	poetry install --with dev --all-extras
 	$(MAKE) migrate
 
