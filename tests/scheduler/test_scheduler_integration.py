@@ -1,9 +1,10 @@
 """Integration test"""
 
 import asyncio
-from unittest.mock import patch
+from typing import Any, Generator, Type
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -13,18 +14,22 @@ from warden.lib.models import Job, Session
 from warden.scheduler.main import run_scheduler
 
 BASE_URI_MOCK = "http://test:4300"
-BASE_URI_MOCK_API = "http://test:4300/api/v1"
 SLURM_USER_ID = "1234"
 
 
 @pytest.fixture
-def mock_api_client(mock_api_app):
+def mock_pasqos_api_client_cls(
+    mock_pasqos_api_app: FastAPI,
+) -> Generator[Type[TestClient], Any, None]:
     # The fastapi TestClient is based on the HTTPX client and should
     # have the same behavior/api as the sync HTTPX client
     # we can thus safely inject it into the test
     # https://fastapi.tiangolo.com/tutorial/testing/
-    with TestClient(app=mock_api_app, base_url=BASE_URI_MOCK_API) as client:
-        yield client
+    class ClientInjection(TestClient):
+        def __init__(self, *args, **kwargs):
+            super().__init__(app=mock_pasqos_api_app, *args, **kwargs)
+
+    yield ClientInjection
 
 
 @pytest.mark.asyncio
@@ -33,14 +38,14 @@ async def test_run_scheduler_integration(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
-    mock_api_client: TestClient,
+    mock_pasqos_api_client_cls: Type[TestClient],
 ):
-    """Test nominal behavior of scheduler with mock api
+    """Test nominal behavior of scheduler with mock pasqos api
 
     Test rationale:
+    - Inject httpx client through the config with
+      a FastAPI TestClient requesting directly to the ASGI 'mock_pasqos_api' app
     - Create N_JOBS dummy jobs to run
-    - Patch/inject httpx client with TestClient requesting
-      directly to the ASGI FastAPI mock api
     - Run scheduler until:
         - All jobs have a "DONE" status in DB
         - Test timeout after TEST_TIMEOUT_S
@@ -65,6 +70,11 @@ async def test_run_scheduler_integration(
         ),
         qpu=QPUConfig(
             uri=BASE_URI_MOCK,
+            #################################
+            # Injecting FastAPI ASGI client #
+            #################################
+            client_cls=mock_pasqos_api_client_cls,
+            #################################
         ),
     )
 
@@ -98,16 +108,13 @@ async def test_run_scheduler_integration(
     ##################
 
     # RUN SCHEDULER
-    with patch("warden.lib.qpu_client.client.Client") as mock_client:
-        # Injecting our FastAPI test client
-        mock_client.return_value = mock_api_client
-        main_task = asyncio.create_task(run_scheduler(db_engine, conf))
+    main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
-        async with db_session_maker() as session:
-            try:
-                async with asyncio.timeout(TEST_TIMEOUT_S):
-                    await wait_until_success(session=session)
-            finally:
-                n_done = (await session.execute(stmt)).scalar()
-                main_task.cancel()
-                assert n_done == N_JOBS
+    async with db_session_maker() as session:
+        try:
+            async with asyncio.timeout(TEST_TIMEOUT_S):
+                await wait_until_success(session=session)
+        finally:
+            n_done = (await session.execute(stmt)).scalar()
+            main_task.cancel()
+            assert n_done == N_JOBS

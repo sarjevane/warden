@@ -1,8 +1,9 @@
 """Yaml config definition"""
 
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Type
 
+import httpx
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,6 +54,12 @@ class SchedulerConfig(BaseSettings):
 
 class QPUConfig(BaseSettings):
     uri: str
+
+    #
+    # Dev config option
+    #
+    # Client dependency injection
+    client_cls: Type[httpx.Client] | None = None
 
 
 class Config(BaseSettings):

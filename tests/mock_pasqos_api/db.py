@@ -7,6 +7,10 @@ from mock_pasqos_api.samples import FAKE_RESULTS
 FAKE_JOB_DB: dict[str, Job] = {}
 FAKE_PROGRAM_DB: dict[str, Program] = {}
 
+########
+# JOBS #
+########
+
 
 def create_job(job_model: JobCreation) -> Job:
     keys = FAKE_JOB_DB.keys()
@@ -14,8 +18,7 @@ def create_job(job_model: JobCreation) -> Job:
         new_uid = 0
     else:
         new_uid = int(max(FAKE_JOB_DB.keys())) + 1
-    # Check program satus
-    new_program = Program(uid=new_uid, status=ProgramStatus.CREATED)
+    create_program(new_uid)
     new_job = Job(
         uid=new_uid,
         datetime=datetime.now(),
@@ -27,7 +30,6 @@ def create_job(job_model: JobCreation) -> Job:
         context=job_model.context,
         batch_id=job_model.context.batch_id,
     )
-    FAKE_PROGRAM_DB[new_uid] = new_program
     FAKE_JOB_DB[new_uid] = new_job
     return new_job
 
@@ -37,10 +39,12 @@ def get_job(uid: int) -> Job:
     if job.status == JobStatus.PENDING:
         job.status = JobStatus.RUNNING
         job.start_datetime = datetime.now()
+        update_program(uid=uid, status=ProgramStatus.RUNNING)
     elif job.status == JobStatus.RUNNING:
         job.status = JobStatus.DONE
         job.result = FAKE_RESULTS
         job.end_datetime = datetime.now()
+        update_program(uid=uid, status=ProgramStatus.DONE)
     return job
 
 
@@ -54,3 +58,25 @@ def cancel_job(uid: int) -> Job:
 
 def job_exists(uid: int) -> bool:
     return uid in FAKE_JOB_DB.keys()
+
+
+############
+# PROGRAMS #
+############
+
+
+def program_exists(uid):
+    return uid in FAKE_PROGRAM_DB.keys()
+
+
+def create_program(new_uid: int) -> None:
+    # TODO: Check program satus at creation
+    new_program = Program(uid=new_uid, status=ProgramStatus.CREATED)
+    FAKE_PROGRAM_DB[new_uid] = new_program
+
+
+def update_program(uid: int, status: ProgramStatus) -> None:
+    if not program_exists(uid):
+        # TODO: handle error
+        return
+    FAKE_PROGRAM_DB[uid].status = status
