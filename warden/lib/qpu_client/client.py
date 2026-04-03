@@ -92,8 +92,6 @@ class QPUClient:
     """
 
     def __init__(self, qpu_conf: QPUConfig) -> None:
-        base_url = qpu_conf.uri + "/api/v1"
-        client_cls = qpu_conf.client_cls or httpx.Client
         self.client = HTTPClientWrapper(qpu_conf)
 
     @property

@@ -10,6 +10,8 @@ from warden.lib.models import Job, Session
 
 
 class Helpers:
+    """Class to wrap helper function through fixtures"""
+
     @staticmethod
     async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int):
         """Creates n_jobs mock jobs to run in the warden db"""
