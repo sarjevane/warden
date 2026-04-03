@@ -22,63 +22,96 @@ logger = logging.getLogger(__name__)
 class HTTPClientWrapper:
     """HTTP client wrapper for exception handling"""
 
-    def __init__(self, qpu_conf: QPUConfig):
+    def __init__(
+        self,
+        qpu_conf: QPUConfig,
+    ):
         self.client = qpu_conf.client
+        self.retry_max = qpu_conf.retry_max
+        self.retry_sleep_s = qpu_conf.retry_sleep_s
 
-    @retry()
-    def get(self, suffix: str) -> Response:
-        """Sends a GET request to base_uri + suffix.
+    def get(self, suffix: str, no_retry: bool = False) -> Response:
+        """Sends a GET request to base_url + suffix.
 
         Arg:
-            suffix: The suffix to add after base_uri for the request.
+            suffix: The suffix to add after base_url for the request.
+            no_retry: Do not attempt to retry request
 
         Returns:
             The Response returned by the GET request.
         """
-        response = self.client.get(suffix)
-        response.raise_for_status()
+        response = retry(
+            max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
+        )(self._get)(suffix)
         return response
 
-    @retry()
-    def post(self, suffix: str, data: dict | None = None) -> Response:
-        """Sends a POST request to base_uri + suffix.
+    def post(
+        self, suffix: str, data: dict | None = None, no_retry: bool = False
+    ) -> Response:
+        """Sends a POST request to base_url + suffix.
 
         Arg:
-            suffix: The suffix to add after base_uri for the request.
+            suffix: The suffix to add after base_url for the request.
             data: The data to POST, as a JSON dictionnary.
+            no_retry: Do not attempt to retry request
 
         Returns:
             The Response returned by the POST request.
         """
+        response = retry(
+            max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
+        )(self._post)(suffix, data)
+        return response
+
+    def delete(self, suffix: str, no_retry: bool = False) -> Response:
+        """Sends a DELETE request to base_url + suffix.
+
+        Arg:
+            suffix: The suffix to add after base_url for the request.
+            no_retry: Do not attempt to retry request
+
+        Returns:
+            The Response returned by the DELETE request.
+        """
+        response = retry(
+            max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
+        )(self._delete)(suffix)
+        return response
+
+    def put(
+        self, suffix: str, data: dict | None = None, no_retry: bool = False
+    ) -> Response:
+        """Sends a PUT request to base_url + suffix.
+
+        Arg:
+            suffix: The suffix to add after base_url for the request.
+            data:  The data to PUT, as a JSON dictionnary.
+            no_retry: Do not attempt to retry request
+
+        Returns:
+            The Response returned by the DELETE request.
+        """
+        response = retry(
+            max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
+        )(self._put)(suffix, data)
+        return response
+
+    def _get(self, suffix: str) -> Response:
+        response = self.client.get(suffix)
+        response.raise_for_status()
+        return response
+
+    def _post(self, suffix: str, data: dict | None = None) -> Response:
         response = self.client.post(suffix, json=data)
         response.raise_for_status()
         return response
 
-    @retry()
-    def delete(self, suffix: str) -> Response:
-        """Sends a DELETE request to base_uri + suffix.
-
-        Arg:
-            suffix: The suffix to add after base_uri for the request.
-
-        Returns:
-            The Response returned by the DELETE request.
-        """
+    def _delete(self, suffix: str) -> Response:
         response = self.client.delete(suffix)
         response.raise_for_status()
         return response
 
-    @retry()
-    def put(self, suffix: str, data: dict | None = None) -> Response:
-        """Sends a PUT request to base_uri + suffix.
-
-        Arg:
-            suffix: The suffix to add after base_uri for the request.
-            data:  The data to PUT, as a JSON dictionnary.
-
-        Returns:
-            The Response returned by the DELETE request.
-        """
+    def _put(self, suffix: str, data: dict | None = None) -> Response:
         response = self.client.put(suffix, json=data)
         response.raise_for_status()
         return response
@@ -111,9 +144,9 @@ class QPUClient:
         data = response.json()["data"]
         return QPUInfo(**data).specs
 
-    def get_job(self, job: QPUJobInfo) -> QPUJobInfo:
+    def get_job(self, job: QPUJobInfo, no_retry: bool) -> QPUJobInfo:
         """Gets information on a submitted job."""
-        response = self.client.get(f"/jobs/{job.uid}")
+        response = self.client.get(f"/jobs/{job.uid}", no_retry)
         data = response.json()["data"]
         return QPUJobInfo(**data)
 
@@ -148,20 +181,21 @@ class QPUClient:
         program_status = self.get_program_status(program_id)
 
         # TODO: reformat program_status
-        if program_status not in [
-            '"ABORTED"',
-            '"ABORTING"',
-            '"ERROR"',
-            '"MISSING_CALIBRATION"',
-            '"DONE"',
-            '"INVALID"',
+        if program_status in [
+            '"RUNNING"',
+            '"WAITING"',
+            '"PAUSED"',
+            '"CREATED"',
+            '"COMPILING"',
+            '"PENDING_CALIBRATION"',
         ]:
             response = self.client.put(f"/jobs/{job_info.uid}/cancel")
             data = response.json()["data"]
             return QPUJobInfo(**data)
         else:
-            logger.error(f"Job {job_info.uid} already terminated, cannot cancel")
-            return self.get_job(job_info.uid)
+            job_info = self.get_job(job_info.uid)
+            logger.error(f"Job can't be cancelled, is in '{job_info.status}' state.")
+            return job_info
 
 
 class AsyncQPUClient:

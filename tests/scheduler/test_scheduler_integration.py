@@ -3,6 +3,7 @@
 import asyncio
 
 import pytest
+import utils
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -22,7 +23,6 @@ async def test_run_scheduler_integration(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     mock_pasqos_api_app: FastAPI,
-    helpers,
 ):
     """Test nominal behavior of scheduler with mock pasqos api
 
@@ -52,9 +52,7 @@ async def test_run_scheduler_integration(
             job_polling_interval_s=0.01,
             job_polling_timeout_s=-1,
         ),
-        qpu=QPUConfig(
-            uri=BASE_URI_MOCK,
-        ),
+        qpu=QPUConfig(uri=BASE_URI_MOCK, retry_max=10, retry_sleep_s=0),
     )
 
     #################################
@@ -67,7 +65,7 @@ async def test_run_scheduler_integration(
     ### TEST SETUP ###
     ##################
 
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == "DONE")
 
@@ -87,6 +85,6 @@ async def test_run_scheduler_integration(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
             assert n_done == N_JOBS

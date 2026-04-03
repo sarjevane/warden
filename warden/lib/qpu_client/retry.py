@@ -35,7 +35,7 @@ class MaxRetryError(QPUClientRequestError):
         super().__init__(message)
 
 
-def retry(max_retry: int = 10, sleep_s: int = 0) -> Callable:
+def retry(max: int, sleep_s: float, no_retry: bool = False) -> Callable:
     """Return retry decorator for requests to PasqOS API"""
 
     def decorator(func: Callable):
@@ -43,8 +43,8 @@ def retry(max_retry: int = 10, sleep_s: int = 0) -> Callable:
         def wrapper(*args, **kwargs):
             counter = 0
 
-            current_err = ""
-            while counter < max_retry:
+            current_err: Exception | None = None
+            while counter < max:
                 counter += 1
                 try:
                     return func(*args, **kwargs)
@@ -56,6 +56,8 @@ def retry(max_retry: int = 10, sleep_s: int = 0) -> Callable:
                     current_err = e
                 except Exception as e:
                     raise UnhandledError(e)
+                if no_retry and current_err is not None:
+                    raise QPUClientRequestError(current_err)
                 time.sleep(sleep_s)
             raise MaxRetryError(current_err)
 

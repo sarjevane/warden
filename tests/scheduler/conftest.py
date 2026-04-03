@@ -6,36 +6,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from warden.lib.config.config import Config, SqliteConfig
 from warden.lib.db.database import Base, build_db_url
-from warden.lib.models import Job, Session
-
-
-class Helpers:
-    """Class to wrap helper function through fixtures"""
-
-    @staticmethod
-    async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int):
-        """Creates n_jobs mock jobs to run in the warden db"""
-        SLURM_USER_ID = "1234"
-
-        jobs_to_run = [
-            Job(
-                id=i,
-                sequence="{}",
-                status="PENDING",
-                shots=100,
-                session=Session(slurm_job_id=1, user_id=SLURM_USER_ID),
-            )
-            for i in range(n_jobs)
-        ]
-
-        async with db_session_maker() as session:
-            session.add_all(jobs_to_run)
-            await session.commit()
-
-
-@pytest.fixture
-def helpers():
-    yield Helpers
 
 
 @pytest.fixture(scope="session")

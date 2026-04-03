@@ -6,6 +6,7 @@ import random
 from datetime import datetime, timedelta
 
 import pytest
+import utils
 from httpx import ConnectError, NetworkError, TimeoutException
 from pytest_httpx import HTTPXMock
 from sqlalchemy import func, select
@@ -38,7 +39,6 @@ async def test_run_main_scheduler(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
     """Test that the scheduler is able to process
     a list of jobs when the QPU is up and running
@@ -59,7 +59,7 @@ async def test_run_main_scheduler(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 10
 
     conf = Config(
@@ -73,6 +73,8 @@ async def test_run_main_scheduler(
         ),
         qpu=QPUConfig(
             uri=QPU_URI,
+            retry_max=10,
+            retry_sleep_s=0,
         ),
     )
 
@@ -129,19 +131,20 @@ async def test_run_main_scheduler(
             }
         }
         # Job running
-        httpx_mock.add_response(
-            method="GET",
-            status_code=200,
-            url=JOB_API + f"/{id}",
-            json=return_running_json,
-        )
+        for _ in range(3):
+            httpx_mock.add_response(
+                method="GET",
+                status_code=200,
+                url=JOB_API + f"/{id}",
+                json=return_running_json,
+            )
         # Job done
         httpx_mock.add_response(
             method="GET", status_code=200, url=JOB_API + f"/{id}", json=return_done_json
         )
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == "DONE")
 
@@ -161,8 +164,8 @@ async def test_run_main_scheduler(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
             assert n_done == N_JOBS
 
 
@@ -173,7 +176,6 @@ async def test_run_main_scheduler_qpu_down(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
     """Test that the scheduler sets jobs to ERROR
     when the QPU is not responsive for a while
@@ -194,7 +196,7 @@ async def test_run_main_scheduler_qpu_down(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 3
 
     EXPECTED_STATUS = "ERROR"
@@ -212,6 +214,8 @@ async def test_run_main_scheduler_qpu_down(
         ),
         qpu=QPUConfig(
             uri=QPU_URI,
+            retry_max=10,
+            retry_sleep_s=0,
         ),
     )
 
@@ -228,7 +232,7 @@ async def test_run_main_scheduler_qpu_down(
     )
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == EXPECTED_STATUS)
 
@@ -248,8 +252,8 @@ async def test_run_main_scheduler_qpu_down(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_error(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
             assert n_done == N_JOBS
 
 
@@ -260,7 +264,6 @@ async def test_run_main_scheduler_job_timeout(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
     """Thest scheduler behavior when one
     scheduled jobs timesout
@@ -289,7 +292,7 @@ async def test_run_main_scheduler_job_timeout(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 5
 
     JOB_TIMEOUT_ID = random.randint(0, N_JOBS - 1)
@@ -317,6 +320,8 @@ async def test_run_main_scheduler_job_timeout(
         ),
         qpu=QPUConfig(
             uri=QPU_URI,
+            retry_max=10,
+            retry_sleep_s=0,
         ),
     )
 
@@ -429,16 +434,9 @@ async def test_run_main_scheduler_job_timeout(
         url=JOB_API + f"/{JOB_TIMEOUT_ID}/cancel",
         json=return_cancelled_job_status,
     )
-    # TODO REMOVE ?
-    httpx_mock.add_response(
-        method="GET",
-        status_code=200,
-        url=JOB_API + f"/{JOB_TIMEOUT_ID}",
-        json=return_cancelled_job_status,
-    )
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt_done = select(func.count(Job.id)).where(Job.status == "DONE")
     stmt_cancelled = select(func.count(Job.id)).where(Job.status == "CANCELED")
@@ -462,21 +460,20 @@ async def test_run_main_scheduler_job_timeout(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt_done)).scalar()
             n_cancelled = (await session.execute(stmt_cancelled)).scalar()
-            main_task.cancel()
             assert n_done == N_JOBS - 1
             assert n_cancelled == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_transient_errors(
+async def test_run_main_scheduler_retry_transient_errors(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
     """Test that the scheduler is able to process
     a list of jobs when the QPU is up and running
@@ -501,7 +498,7 @@ async def test_run_main_scheduler_transient_errors(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 1
 
     conf = Config(
@@ -513,9 +510,7 @@ async def test_run_main_scheduler_transient_errors(
             job_polling_interval_s=0.01,
             job_polling_timeout_s=-1,
         ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-        ),
+        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
     )
 
     ##################
@@ -599,7 +594,7 @@ async def test_run_main_scheduler_transient_errors(
         )
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == "DONE")
 
@@ -619,8 +614,8 @@ async def test_run_main_scheduler_transient_errors(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
             assert n_done == N_JOBS
 
 
@@ -631,13 +626,10 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
     """Test scheduler behavior when PasqOS API is unreachable.
     Expected behavior is that all jobs are set to "ERROR" status
     after retries fail.
-
-
 
     Test rationale:
     - Create a dummy jobs to run
@@ -653,7 +645,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 1
     EXPECTED_STATUS = "ERROR"
 
@@ -666,9 +658,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
             job_polling_interval_s=0.01,
             job_polling_timeout_s=-1,
         ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-        ),
+        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
     )
 
     ##################
@@ -679,7 +669,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     httpx_mock.add_exception(ConnectError("Connection refused"), is_reusable=True)
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == EXPECTED_STATUS)
 
@@ -699,6 +689,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
             main_task.cancel()
             assert n_done == N_JOBS
@@ -711,11 +702,8 @@ async def test_run_main_scheduler_job_creation_client_error(
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
-    helpers,
 ):
-    """Test scheduler behavior when PasqOS API is unreachable.
-    Expected behavior is that all jobs are set to "ERROR" status
-    after retries fail.
+    """Test scheduler behavior when PasqOS API fails to create a job
 
     Test rationale:
     - Create N_JOBS dummy jobs to run
@@ -732,7 +720,7 @@ async def test_run_main_scheduler_job_creation_client_error(
     ### TEST CONF  ###
     ##################
 
-    TEST_TIMEOUT_S = 10
+    TEST_TIMEOUT_S = 3
     N_JOBS = 3
     EXPECTED_STATUS = "ERROR"
 
@@ -745,9 +733,7 @@ async def test_run_main_scheduler_job_creation_client_error(
             job_polling_interval_s=0.01,
             job_polling_timeout_s=-1,
         ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-        ),
+        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
     )
 
     ##################
@@ -771,7 +757,7 @@ async def test_run_main_scheduler_job_creation_client_error(
     )
 
     # Populate DB with jobs to run
-    await helpers.create_n_jobs(db_session_maker, N_JOBS)
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
 
     stmt = select(func.count(Job.id)).where(Job.status == EXPECTED_STATUS)
 
@@ -791,6 +777,140 @@ async def test_run_main_scheduler_job_creation_client_error(
             async with asyncio.timeout(TEST_TIMEOUT_S):
                 await wait_until_success(session=session)
         finally:
+            utils.raise_main_scheduler_task_exception(main_task)
             n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
+            assert n_done == N_JOBS
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", ["FIFO"])
+async def test_run_main_scheduler_job_timeout_client_error(
+    strategy: str,
+    db_engine: AsyncEngine,
+    db_session_maker: async_sessionmaker,
+    httpx_mock: HTTPXMock,
+):
+    """Test scheduler behavior when job timesout and api requests
+    to poll job status fail.
+
+    Test rationale:
+    - Configure job timout to non-negative value to avoid
+      infinite polling
+    - Create N_JOBS dummy jobs to run
+    - PasqOS API is mocked:
+        - To return QPU status as "UP"
+        - To accept job creation request
+        - To return 500 errors when polling job status
+        - To return 500 errors when trying to cancel job
+          (it's the same backend request)
+    - Run scheduler until:
+        - All jobs have an "ERROR" status is DB
+        - Test timeout after TEST_TIMEOUT_S
+    - Check n (jobs with status "DONE") = N_JOBS
+    """
+
+    ##################
+    ### TEST CONF  ###
+    ##################
+
+    TEST_TIMEOUT_S = 300
+    N_JOBS = 1
+    EXPECTED_STATUS = "ERROR"
+
+    conf = Config(
+        scheduler=SchedulerConfig(
+            strategy=strategy,
+            db_polling_interval_s=0.01,
+            qpu_polling_interval_s=0.01,
+            qpu_polling_timeout_s=-1,
+            # Set job_polling_timeout_s to a non-negative value to
+            # avoid infinite job status polling
+            job_polling_interval_s=0.05,
+            job_polling_timeout_s=0.5,  # <----- IMPORTANT TO THIS TEST
+        ),
+        qpu=QPUConfig(
+            uri=QPU_URI,
+            retry_max=10,
+            retry_sleep_s=0,
+        ),
+    )
+
+    ##################
+    ### TEST SETUP ###
+    ##################
+
+    # QPU status
+    httpx_mock.add_response(
+        method="GET",
+        url=SYSTEM_OPERATIONAL_API,
+        json={"data": {"operational_status": "UP"}},
+        is_reusable=True,
+    )
+    for id in range(N_JOBS):
+        return_create_json = {
+            "data": {
+                "uid": id,
+                "batch_id": SLURM_USER_ID,
+                "status": "PENDING",
+                "result": None,
+                "program_id": QPU_PROGRAM_UID,
+                "created_datetime": NOW.isoformat(),
+                "start_datetime": None,
+                "end_datetime": None,
+            }
+        }
+        # Create Job
+        httpx_mock.add_response(
+            method="POST", status_code=200, url=JOB_API, json=return_create_json
+        )
+        # Unable to poll job status
+        httpx_mock.add_response(
+            method="GET", url=JOB_API + f"/{id}", status_code=500, is_reusable=True
+        )
+        # Job cancellation requests
+        # Return associated program
+        return_cancelled_job_program = {
+            "data": {
+                "uid": QPU_PROGRAM_UID,
+                "status": "RUNNING",
+                # ...
+            }
+        }
+        httpx_mock.add_response(
+            method="GET",
+            status_code=200,
+            url=PROGRAM_API + f"/{QPU_PROGRAM_UID}",
+            json=return_cancelled_job_program,
+        )
+        # Unable to cancel job
+        httpx_mock.add_response(
+            method="PUT",
+            url=JOB_API + f"/{id}/cancel",
+            status_code=500,
+            is_reusable=True,
+        )
+
+    # Populate DB with jobs to run
+    await utils.create_n_jobs(db_session_maker, N_JOBS)
+
+    stmt = select(func.count(Job.id)).where(Job.status == EXPECTED_STATUS)
+
+    async def wait_until_success(session: AsyncSession):
+        while (await session.execute(stmt)).scalar() != N_JOBS:
+            await asyncio.sleep(0.5)
+
+    ##################
+    ### TEST RUN   ###
+    ##################
+
+    # RUN SCHEDULER
+    main_task = asyncio.create_task(run_scheduler(db_engine, conf))
+
+    async with db_session_maker() as session:
+        try:
+            async with asyncio.timeout(TEST_TIMEOUT_S):
+                await wait_until_success(session=session)
+        finally:
+            utils.raise_main_scheduler_task_exception(main_task)
+            n_done = (await session.execute(stmt)).scalar()
             assert n_done == N_JOBS
