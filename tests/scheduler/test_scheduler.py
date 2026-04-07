@@ -483,7 +483,7 @@ async def test_run_main_scheduler_retry_transient_errors(
     Test rationale:
     - Create N_JOBS dummy jobs to run
     - PasqOS API is mocked:
-        - For each requests to return a list of transient errors
+        - For each requests to return a list of RETRYABLE transient errors
           before returning the actual response
         - To return QPU status as "UP"
         - To accept job creation requests
@@ -510,7 +510,12 @@ async def test_run_main_scheduler_retry_transient_errors(
             job_polling_interval_s=0.01,
             job_polling_timeout_s=-1,
         ),
-        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
+        # Setting retr_sleep_s to 0 to speed up testing
+        # max_try arbitrarily set to 10, must be more than the number of errors
+        # the helper function '_add_transient_errors' adds
+        qpu=QPUConfig(
+            uri=QPU_URI, retry_max=10, retry_sleep_s=0
+        ),  # <----- IMPORTANT TO THIS TEST
     )
 
     ##################
@@ -628,6 +633,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     httpx_mock: HTTPXMock,
 ):
     """Test scheduler behavior when PasqOS API is unreachable.
+
     Expected behavior is that all jobs are set to "ERROR" status
     after retries fail.
 
@@ -705,6 +711,9 @@ async def test_run_main_scheduler_job_creation_client_error(
 ):
     """Test scheduler behavior when PasqOS API fails to create a job
 
+    Expected behavior is that all jobs return as ERROR after the
+    request fails after retries.
+
     Test rationale:
     - Create N_JOBS dummy jobs to run
     - PasqOS API is mocked:
@@ -749,8 +758,8 @@ async def test_run_main_scheduler_job_creation_client_error(
     )
 
     # Mock job creation error
-    httpx_mock.add_exception(
-        exception=ConnectError("Connection refused"),
+    httpx_mock.add_response(
+        status_code=500,
         url=JOB_API,
         method="POST",
         is_reusable=True,
@@ -790,8 +799,10 @@ async def test_run_main_scheduler_job_timeout_client_error(
     db_session_maker: async_sessionmaker,
     httpx_mock: HTTPXMock,
 ):
-    """Test scheduler behavior when job timesout and api requests
-    to poll job status fail.
+    """Test scheduler behavior when job timesout due to the requests
+    to get the job status failing
+
+    Expected behavior is that all jobs return with an ERROR status
 
     Test rationale:
     - Configure job timout to non-negative value to avoid
@@ -802,11 +813,11 @@ async def test_run_main_scheduler_job_timeout_client_error(
         - To accept job creation request
         - To return 500 errors when polling job status
         - To return 500 errors when trying to cancel job
-          (it's the same backend request)
+          (it's the same backend request in PasqOS)
     - Run scheduler until:
         - All jobs have an "ERROR" status is DB
         - Test timeout after TEST_TIMEOUT_S
-    - Check n (jobs with status "DONE") = N_JOBS
+    - Check n (jobs with status "ERROR") = N_JOBS
     """
 
     ##################

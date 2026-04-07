@@ -28,15 +28,19 @@ async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int):
 
 
 @staticmethod
-def raise_main_scheduler_task_exception(task: Task) -> None:
+def raise_main_scheduler_task_exception(scheduler_task: Task) -> None:
     """
-    The main scheduler is an infinite loop that we don't await
-    so if it encounters an exception it fails silently
-    and we don't see it when tests fail
+    The main scheduler task is an infinite loop that we don't await.
+    It case it encounters an unhandled exception during the test,
+    the test will just timeout and the exceptions encountered in
+    the main scheduler task will not be raised and will make debugging
+    the tests much more difficult.
 
-    So if the task is done, it must have encoutered an exception
+    This helper function is here to make sure that
+    IF the scheduler task encounters an exception, we raise it again to
+    make it visible to the developer.
     """
-    if task.done() and task.exception():
-        raise task.exception()
+    if scheduler_task.done() and scheduler_task.exception():
+        raise scheduler_task.exception()
     else:
-        task.cancel()
+        scheduler_task.cancel()

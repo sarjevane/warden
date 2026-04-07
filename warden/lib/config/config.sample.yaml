@@ -60,7 +60,7 @@ qpu:
 
   # Request retry policy
   # Max number of retries to the QPU API in case of 
-  # transient errors
+  # transient errors during requests
   retry_max: 10
   # Time between request retries
   retry_sleep_s: 1
