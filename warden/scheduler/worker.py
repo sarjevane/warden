@@ -8,7 +8,7 @@ from datetime import datetime
 from warden.lib.config import Config
 from warden.lib.qpu_client import QPUClient, QPUClientRequestError, QPUJobInfo
 from warden.scheduler.errors import QPUDownError
-from warden.scheduler.memqueue import MemQueue as Queue
+from warden.scheduler.memqueue import MemQueue
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class LocalQPUWorker:
         return dataclasses.replace(qpu_job, status="ERROR")
 
     async def execute_job(
-        self, queue: Queue, nb_run: int, sequence: str, batch_id: str | None = None
+        self, queue: MemQueue, nb_run: int, sequence: str, batch_id: str | None = None
     ) -> None:
         """Submit job to run on the QPU"""
 
@@ -67,7 +67,7 @@ class LocalQPUWorker:
             logger.info("Job execution done")
         return
 
-    async def _poll_qpu(self, queue: Queue, qpu_job: QPUJobInfo) -> QPUJobInfo:
+    async def _poll_qpu(self, queue: MemQueue, qpu_job: QPUJobInfo) -> QPUJobInfo:
         try:
             polling_start = datetime.now()
             while not self.is_operational:
@@ -95,7 +95,7 @@ class LocalQPUWorker:
 
     async def _create_job(
         self,
-        queue: Queue,
+        queue: MemQueue,
         qpu_job: QPUJobInfo,
         nb_run: int,
         sequence: int,
@@ -115,7 +115,7 @@ class LocalQPUWorker:
             await queue.put(qpu_job)
         return qpu_job
 
-    async def _poll_job(self, queue: Queue, qpu_job: QPUJobInfo) -> QPUJobInfo:
+    async def _poll_job(self, queue: MemQueue, qpu_job: QPUJobInfo) -> QPUJobInfo:
         polling_start = datetime.now()
         qpu_job = self._get_job_poll(qpu_job)
         await queue.put(qpu_job)
