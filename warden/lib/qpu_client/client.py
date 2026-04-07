@@ -201,12 +201,30 @@ class QPUClient:
 class AsyncQPUClient:
     """HTTP Client to interact with the pasqos API."""
 
-    def __init__(self, uri):
-        self.uri = uri
-        self.client = AsyncClient()
+    def __init__(self, qpu_conf: QPUConfig):
+        self.conf = qpu_conf
+        self.client = AsyncClient(base_url=qpu_conf.uri + "/api/v1")
 
     async def get_specs(self) -> str:
         """Get QPU serialized device specs."""
-        response = await self.client.get(f"{self.uri}/api/v1/system")
-        response.raise_for_status()
+        response = await self.get("/system")
         return json.dumps(response.json()["data"]["specs"])
+
+    async def get(self, suffix: str):
+        """Sends a GET request to base_url + suffix.
+
+        Arg:
+            suffix: The suffix to add after base_url for the request.
+
+        Returns:
+            The Response returned by the GET request.
+        """
+        response = await retry(
+            max=self.conf.retry_max, sleep_s=self.conf.retry_sleep_s
+        )(self._get)(suffix)
+        return response
+
+    async def _get(self, suffix: str):
+        response = await self.client.get(suffix)
+        response.raise_for_status()
+        return response

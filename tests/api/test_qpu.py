@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient, MockTransport, Request, Response
 
 from warden.api.routes.dependencies.qpu_client import get_qpu_client
+from warden.lib.config import QPUConfig
 from warden.lib.qpu_client.client import AsyncQPUClient
 
 
@@ -82,8 +83,11 @@ def qpu_specs() -> dict:
 
 def make_qpu_client(handler: Callable[[Request], Response]) -> AsyncQPUClient:
     """Create a QPUClient with a mocked HTTP transport."""
-    client = AsyncQPUClient(uri="http://mock-qpu")
-    client.client = AsyncClient(transport=MockTransport(handler))
+    config = QPUConfig(uri="http://mock-qpu", retry_max=10, retry_sleep_s=0)
+    client = AsyncQPUClient(config)
+    client.client = AsyncClient(
+        base_url=config.uri + "/api/v1", transport=MockTransport(handler)
+    )
     return client
 
 
