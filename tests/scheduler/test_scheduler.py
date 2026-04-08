@@ -257,13 +257,13 @@ async def test_run_job_timeout(
             - Add N_JOB_POLLING_BEFORE_TIMEOUT "RUNNING" status return
             - Mock the job canceling API calls
                 - Mock half the jobs not being cancelable because program is DONE
-                - Other jobs return as CANCELED
+                - Jobs in JOB_TIMEOUT_CANCELED_ID return as CANCELED
     - Run scheduler until:
         - All jobs are either "DONE" or "CANCELED"
         - Test timout after TEST_TIMOUT_S
     - Check :
-        - n(jobs "DONE") = N_JOBS - (N_JOBS_TIMEOUT // 2)
-        - n(jobs "CANCELED") = (N_JOBS_TIMEOUT // 2)
+        - n(jobs !"PENDING") = N_JOBS
+        - canceled_jobs_ids in JOB_TIMEOUT_CANCELED_ID
     """
 
     ##################
@@ -275,6 +275,7 @@ async def test_run_job_timeout(
     N_JOBS_TIMEOUT = 4
 
     JOB_TIMEOUT_IDS = random.sample([i for i in range(N_JOBS - 1)], N_JOBS_TIMEOUT)
+    JOB_TIMEOUT_CANCELED_ID = JOB_TIMEOUT_IDS[0::2]
 
     # Do not set timeout time to a multiple of interval time
     # to have a deterministic number of polling requests
@@ -310,7 +311,6 @@ async def test_run_job_timeout(
     )
 
     # JOB creation and polling
-    job_timeout_counter = 0
     for job_uid in range(N_JOBS):
         return_create_json = {
             "data": {
@@ -357,8 +357,6 @@ async def test_run_job_timeout(
         if job_uid in JOB_TIMEOUT_IDS:
             # Half the timeout jobs are actually done
             # before we try to cancel them
-            is_cancelable = [True, False][job_timeout_counter % 2]
-            job_timeout_counter += 1
 
             for _ in range(N_JOB_POLLING_BEFORE_TIMEOUT):
                 httpx_mock.add_response(
@@ -390,7 +388,7 @@ async def test_run_job_timeout(
                 "message": "Bad request.",
                 "status": "fail",
             }
-            if is_cancelable:
+            if job_uid in JOB_TIMEOUT_CANCELED_ID:
                 # Job can be canceled
                 httpx_mock.add_response(
                     method="PUT",
@@ -431,8 +429,8 @@ async def test_run_job_timeout(
     # Populate DB with jobs to run
     await utils.create_n_jobs(db_session_maker, N_JOBS)
 
-    stmt_done = select(func.count(Job.id)).where(Job.status == "DONE")
-    stmt_cancelled = select(func.count(Job.id)).where(Job.status == "CANCELED")
+    stmt_done = select(Job).where(Job.status == "DONE")
+    stmt_cancelled = select(Job).where(Job.status == "CANCELED")
     stmt_processed = select(func.count(Job.id)).where(
         Job.status.in_(["DONE", "CANCELED"])
     )
@@ -452,10 +450,14 @@ async def test_run_job_timeout(
         async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
             await wait_until_success(session=session)
 
-        n_done = (await session.execute(stmt_done)).scalar()
-        n_cancelled = (await session.execute(stmt_cancelled)).scalar()
-        assert n_done == N_JOBS - (N_JOBS_TIMEOUT // 2)
-        assert n_cancelled == (N_JOBS_TIMEOUT // 2)
+        n_processed = (await session.execute(stmt_processed)).scalar()
+        assert n_processed == N_JOBS
+        job_canceled_id = (await session.execute(stmt_cancelled)).scalars()
+        for job in job_canceled_id:
+            assert job.id in JOB_TIMEOUT_CANCELED_ID
+        job_done = (await session.execute(stmt_done)).scalars()
+        for job in job_done:
+            assert job.id not in JOB_TIMEOUT_CANCELED_ID
 
 
 @pytest.mark.asyncio

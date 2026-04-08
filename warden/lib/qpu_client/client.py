@@ -8,7 +8,7 @@ from typing import Any
 from httpx import AsyncClient, Response
 
 from warden.lib.config import QPUConfig
-from warden.lib.qpu_client.retry import NoRetryHTTPStatus, retry
+from warden.lib.qpu_client.retry import NotRetriedHTTPStatus, retry
 from warden.lib.qpu_client.types import (
     QPUInfo,
     QPUJobInfo,
@@ -17,6 +17,10 @@ from warden.lib.qpu_client.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class JobCancelationError(Exception):
+    pass
 
 
 class HTTPClientWrapper:
@@ -181,13 +185,15 @@ class QPUClient:
             response = self.client.put(f"/jobs/{job_info.uid}/cancel")
             data = response.json()["data"]
             return QPUJobInfo(**data)
-        except NoRetryHTTPStatus as e:
+        except NotRetriedHTTPStatus as e:
             resp = e.response
+            if resp.status_code != 400:
+                raise JobCancelationError from e
             ret_code = resp.json()["code"]
             data = resp.json()["data"]
             cant_cancel_job_code = "3003"
-            if (resp.status_code != 400) or (cant_cancel_job_code not in ret_code):
-                raise e
+            if cant_cancel_job_code not in ret_code:
+                raise JobCancelationError from e
             # Can't cancel job because associated program can't be aborted | canceled
             # That probably means that our job information is outdated so we fetch it again
             # and return

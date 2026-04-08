@@ -8,10 +8,10 @@ from warden.lib.qpu_client import QPUJobInfo
 
 class MemQueue(Queue[QPUJobInfo]):
     def __init__(self, *args, **kwargs):
-        self.memmm: QPUJobInfo | None = None
+        self.mem: QPUJobInfo | None = None
         super().__init__(*args, **kwargs)
 
     async def put(self, item: QPUJobInfo):
-        if item != self.memmm:
-            self.memmm = deepcopy(item)
+        if item != self.mem:
+            self.mem = deepcopy(item)
             return await super().put(item)

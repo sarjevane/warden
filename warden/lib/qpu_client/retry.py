@@ -19,7 +19,7 @@ class UnhandledError(QPUClientRequestError):
     pass
 
 
-class NoRetryHTTPStatus(QPUClientRequestError):
+class NotRetriedHTTPStatus(QPUClientRequestError):
     def __init__(self, http_status_error: HTTPStatusError):
         self.response = http_status_error.response
         self.request = http_status_error.request
@@ -50,26 +50,20 @@ def retry(max: int, sleep_s: float, no_retry: bool = False) -> Callable:
 
     Raises:
         UnhandledError: If decorator encounters an unnexpected exception.
-        NoRetryHTTPStatus: If the HTTP request returns with a non-retryable error code.
+        NotRetriedHTTPStatus: If the HTTP request returns with a non-retryable error code.
         MaxRetryError: If the maximum number of retries without success has been reached.
     """
 
     def decorator(func: Callable):
 
-        def _handle_exception(e: Exception, attempt: int):
+        def _handle_exception(e: Exception):
             if isinstance(e, (NetworkError, TimeoutException)):
                 pass
             elif isinstance(e, HTTPStatusError):
                 if e.response.status_code not in RETRY_HTTP_EXIT_CODES:
-                    raise NoRetryHTTPStatus(e)
+                    raise NotRetriedHTTPStatus(e)
             else:
-                raise UnhandledError(e)
-
-            if no_retry:
-                raise QPUClientRequestError(e)
-
-            if attempt >= max:
-                raise MaxRetryError(e)
+                raise UnhandledError(e) from e
 
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -78,7 +72,11 @@ def retry(max: int, sleep_s: float, no_retry: bool = False) -> Callable:
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    _handle_exception(e, attempt)
+                    if no_retry:
+                        raise QPUClientRequestError(e)
+                    if attempt >= max:
+                        raise MaxRetryError(e)
+                    _handle_exception(e)
                 time.sleep(sleep_s)
                 attempt += 1
 
@@ -89,7 +87,11 @@ def retry(max: int, sleep_s: float, no_retry: bool = False) -> Callable:
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    _handle_exception(e, attempt)
+                    if no_retry:
+                        raise QPUClientRequestError(e)
+                    if attempt >= max:
+                        raise MaxRetryError(e)
+                    _handle_exception(e)
                 await asyncio.sleep(sleep_s)
                 attempt += 1
 
