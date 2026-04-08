@@ -256,7 +256,7 @@ async def test_run_job_timeout(
         - For each ID in JOB_TIMEOUT_IDS:
             - Add N_JOB_POLLING_BEFORE_TIMEOUT "RUNNING" status return
             - Mock the job canceling API calls
-                - Mock half the jobs not being cancelable because program is DONE
+                - Jobs not in JOB_TIMEOUT_CANCELED_ID will return as DONE
                 - Jobs in JOB_TIMEOUT_CANCELED_ID return as CANCELED
     - Run scheduler until:
         - All jobs are either "DONE" or "CANCELED"
@@ -264,6 +264,7 @@ async def test_run_job_timeout(
     - Check :
         - n(jobs !"PENDING") = N_JOBS
         - canceled_jobs_ids in JOB_TIMEOUT_CANCELED_ID
+        - done_jobs_ids not in JOB_TIMEOUT_CANCELED_ID
     """
 
     ##################

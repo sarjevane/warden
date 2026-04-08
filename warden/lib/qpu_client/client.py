@@ -188,12 +188,12 @@ class QPUClient:
         except NotRetriedHTTPStatus as e:
             resp = e.response
             if resp.status_code != 400:
-                raise JobCancelationError from e
+                raise JobCancelationError(e) from e
             ret_code = resp.json()["code"]
             data = resp.json()["data"]
             cant_cancel_job_code = "3003"
             if cant_cancel_job_code not in ret_code:
-                raise JobCancelationError from e
+                raise JobCancelationError(e) from e
             # Can't cancel job because associated program can't be aborted | canceled
             # That probably means that our job information is outdated so we fetch it again
             # and return

@@ -6,7 +6,12 @@ import logging
 from datetime import datetime
 
 from warden.lib.config import Config
-from warden.lib.qpu_client import QPUClient, QPUClientRequestError, QPUJobInfo
+from warden.lib.qpu_client import (
+    JobCancelationError,
+    QPUClient,
+    QPUClientRequestError,
+    QPUJobInfo,
+)
 from warden.scheduler.errors import QPUDownError
 from warden.scheduler.memqueue import MemQueue
 
@@ -131,7 +136,7 @@ class LocalQPUWorker:
                 )
                 try:
                     qpu_job = self.qpu_client.cancel_job(qpu_job)
-                except QPUClientRequestError as e:
+                except (JobCancelationError, QPUClientRequestError) as e:
                     logger.error(f"Failed cancelling job: {e}")
                     qpu_job = self.qpu_job_to_error(qpu_job)
                     await queue.put(qpu_job)
