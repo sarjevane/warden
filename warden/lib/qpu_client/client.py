@@ -46,13 +46,13 @@ class HTTPClientWrapper:
         return response
 
     def post(
-        self, suffix: str, data: dict | None = None, no_retry: bool = False
+        self, suffix: str, json: dict | None = None, no_retry: bool = False
     ) -> Response:
         """Sends a POST request to base_url + suffix.
 
         Arg:
             suffix: The suffix to add after base_url for the request.
-            data: The data to POST, as a JSON dictionnary.
+            json: The data to POST, as a JSON dictionnary.
             no_retry: Do not attempt to retry request
 
         Returns:
@@ -60,7 +60,7 @@ class HTTPClientWrapper:
         """
         response = retry(
             max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
-        )(self._post)(suffix, data)
+        )(self._post)(suffix, json)
         return response
 
     def delete(self, suffix: str, no_retry: bool = False) -> Response:
@@ -79,13 +79,13 @@ class HTTPClientWrapper:
         return response
 
     def put(
-        self, suffix: str, data: dict | None = None, no_retry: bool = False
+        self, suffix: str, json: dict | None = None, no_retry: bool = False
     ) -> Response:
         """Sends a PUT request to base_url + suffix.
 
         Arg:
             suffix: The suffix to add after base_url for the request.
-            data:  The data to PUT, as a JSON dictionnary.
+            json:  The data to PUT, as a JSON dictionnary.
             no_retry: Do not attempt to retry request
 
         Returns:
@@ -93,7 +93,7 @@ class HTTPClientWrapper:
         """
         response = retry(
             max=self.retry_max, sleep_s=self.retry_sleep_s, no_retry=no_retry
-        )(self._put)(suffix, data)
+        )(self._put)(suffix, json)
         return response
 
     def _get(self, suffix: str) -> Response:
@@ -101,8 +101,8 @@ class HTTPClientWrapper:
         response.raise_for_status()
         return response
 
-    def _post(self, suffix: str, data: dict | None = None) -> Response:
-        response = self.client.post(suffix, json=data)
+    def _post(self, suffix: str, json: dict | None = None) -> Response:
+        response = self.client.post(suffix, json=json)
         response.raise_for_status()
         return response
 
@@ -111,8 +111,8 @@ class HTTPClientWrapper:
         response.raise_for_status()
         return response
 
-    def _put(self, suffix: str, data: dict | None = None) -> Response:
-        response = self.client.put(suffix, json=data)
+    def _put(self, suffix: str, json: dict | None = None) -> Response:
+        response = self.client.put(suffix, json=json)
         response.raise_for_status()
         return response
 
