@@ -1,6 +1,6 @@
-from .client import AsyncQPUClient, QPUClient
-from .retry import QPUClientRequestError
-from .types import QPUInfo, QPUJobInfo, QPUOperationalStatus
+from warden.lib.qpu_client.client import AsyncQPUClient, QPUClient
+from warden.lib.qpu_client.retry import QPUClientRequestError
+from warden.lib.qpu_client.types import QPUInfo, QPUJobInfo, QPUOperationalStatus
 
 __all__ = [
     "QPUInfo",
