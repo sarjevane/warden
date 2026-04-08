@@ -468,7 +468,7 @@ async def test_run_retry_transient_errors(
 ):
     """Test that the scheduler is able to process
     a list of jobs when the QPU is up and running
-    while handling various network and apllication
+    while handling various network and application
     transient errors
 
     Test rationale:
