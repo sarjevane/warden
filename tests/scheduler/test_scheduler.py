@@ -11,8 +11,9 @@ from httpx import ConnectError, NetworkError, TimeoutException
 from pytest_httpx import HTTPXMock
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from utils import build_conf
 
-from warden.lib.config import Config, QPUConfig, SchedulerConfig
+from warden.lib.config import Config
 from warden.lib.models import Job
 from warden.scheduler.main import run_scheduler
 
@@ -31,10 +32,12 @@ JOB_API = API_URI + "/jobs"
 SYSTEM_API = API_URI + "/system"
 PROGRAM_API = API_URI + "/programs"
 
+SUCCESS_CHECK_INTERVAL_S = 0.1
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler(
+async def test_run_nominal(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -62,21 +65,7 @@ async def test_run_main_scheduler(
     TEST_TIMEOUT_S = 3
     N_JOBS = 10
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            job_polling_interval_s=0.01,
-            job_polling_timeout_s=-1,
-        ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-            retry_max=10,
-            retry_sleep_s=0,
-        ),
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
 
     ##################
     ### TEST SETUP ###
@@ -150,7 +139,7 @@ async def test_run_main_scheduler(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -160,18 +149,16 @@ async def test_run_main_scheduler(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        assert n_done == N_JOBS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_qpu_down(
+async def test_run_qpu_down(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -201,23 +188,9 @@ async def test_run_main_scheduler_qpu_down(
 
     EXPECTED_STATUS = "ERROR"
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            # Set QPU timeout to non-negative value to
-            # avoid infinite polling of QPU status
-            qpu_polling_interval_s=0.01,  # <----- IMPORTANT TO THIS TEST
-            qpu_polling_timeout_s=0.03,  # <----- IMPORTANT TO THIS TEST
-            job_polling_interval_s=0.01,
-            job_polling_timeout_s=-1,
-        ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-            retry_max=10,
-            retry_sleep_s=0,
-        ),
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
+    conf.scheduler.qpu_polling_interval_s = 0.01  # <----- IMPORTANT TO THIS TEST
+    conf.scheduler.qpu_polling_timeout_s = 0.03  # <----- IMPORTANT TO THIS TEST
 
     ##################
     ### TEST SETUP ###
@@ -238,7 +211,7 @@ async def test_run_main_scheduler_qpu_down(
 
     async def wait_until_error(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -248,18 +221,16 @@ async def test_run_main_scheduler_qpu_down(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_error(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_error(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        assert n_done == N_JOBS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_job_timeout(
+async def test_run_job_timeout(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -315,22 +286,14 @@ async def test_run_main_scheduler_job_timeout(
         int(math.ceil(JOB_POLLING_TIMEOUT_S / JOB_POLLING_INTERVAL_S)) + 1
     )
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            # Set job_polling_timeout_s to a non-negative value to
-            # avoid infinite job status polling
-            job_polling_interval_s=JOB_POLLING_INTERVAL_S,  # <----- IMPORTANT TO THIS TEST
-            job_polling_timeout_s=JOB_POLLING_TIMEOUT_S,  # <----- IMPORTANT TO THIS TEST
-        ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-            retry_max=10,
-            retry_sleep_s=0,
-        ),
+    conf: Config = build_conf(strategy, QPU_URI)
+    # Set job_polling_timeout_s to a non-negative value to
+    # avoid infinite job status polling
+    conf.scheduler.job_polling_interval_s = (
+        JOB_POLLING_INTERVAL_S  # <----- IMPORTANT TO THIS TEST
+    )
+    conf.scheduler.job_polling_timeout_s = (
+        JOB_POLLING_TIMEOUT_S  # <----- IMPORTANT TO THIS TEST
     )
 
     ##################
@@ -479,26 +442,24 @@ async def test_run_main_scheduler_job_timeout(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt_processed)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     # RUN SCHEDULER
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt_done)).scalar()
-            n_cancelled = (await session.execute(stmt_cancelled)).scalar()
-            assert n_done == N_JOBS - (N_JOBS_TIMEOUT // 2)
-            assert n_cancelled == (N_JOBS_TIMEOUT // 2)
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt_done)).scalar()
+        n_cancelled = (await session.execute(stmt_cancelled)).scalar()
+        assert n_done == N_JOBS - (N_JOBS_TIMEOUT // 2)
+        assert n_cancelled == (N_JOBS_TIMEOUT // 2)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_retry_transient_errors(
+async def test_run_retry_transient_errors(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -530,22 +491,12 @@ async def test_run_main_scheduler_retry_transient_errors(
     TEST_TIMEOUT_S = 3
     N_JOBS = 1
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            job_polling_interval_s=0.01,
-            job_polling_timeout_s=-1,
-        ),
-        # Setting retr_sleep_s to 0 to speed up testing
-        # max_try arbitrarily set to 10, must be more than the number of errors
-        # the helper function '_add_transient_errors' adds
-        qpu=QPUConfig(
-            uri=QPU_URI, retry_max=10, retry_sleep_s=0
-        ),  # <----- IMPORTANT TO THIS TEST
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
+    # Setting retr_sleep_s to 0 to speed up testing
+    # max_try arbitrarily set to 10, must be more than the number of errors
+    # the helper function '_add_transient_errors' adds
+    conf.qpu.retry_max = 10
+    conf.qpu.retry_sleep_s = 0
 
     ##################
     ### TEST SETUP ###
@@ -634,7 +585,7 @@ async def test_run_main_scheduler_retry_transient_errors(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -644,18 +595,16 @@ async def test_run_main_scheduler_retry_transient_errors(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        assert n_done == N_JOBS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_pasqos_api_unreachable(
+async def test_run_pasqos_api_unreachable(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -684,17 +633,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     N_JOBS = 1
     EXPECTED_STATUS = "ERROR"
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            job_polling_interval_s=0.01,
-            job_polling_timeout_s=-1,
-        ),
-        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
 
     ##################
     ### TEST SETUP ###
@@ -710,7 +649,7 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -720,19 +659,17 @@ async def test_run_main_scheduler_pasqos_api_unreachable(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            main_task.cancel()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        main_task.cancel()
+        assert n_done == N_JOBS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_job_creation_client_error(
+async def test_run_job_creation_client_error(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -762,17 +699,7 @@ async def test_run_main_scheduler_job_creation_client_error(
     N_JOBS = 3
     EXPECTED_STATUS = "ERROR"
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            job_polling_interval_s=0.01,
-            job_polling_timeout_s=-1,
-        ),
-        qpu=QPUConfig(uri=QPU_URI, retry_max=10, retry_sleep_s=0),
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
 
     ##################
     ### TEST SETUP ###
@@ -801,7 +728,7 @@ async def test_run_main_scheduler_job_creation_client_error(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -811,18 +738,16 @@ async def test_run_main_scheduler_job_creation_client_error(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        assert n_done == N_JOBS
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strategy", ["FIFO"])
-async def test_run_main_scheduler_job_client_error_timeout(
+async def test_run_job_client_error_timeout(
     strategy: str,
     db_engine: AsyncEngine,
     db_session_maker: async_sessionmaker,
@@ -857,23 +782,10 @@ async def test_run_main_scheduler_job_client_error_timeout(
     N_JOBS = 1
     EXPECTED_STATUS = "ERROR"
 
-    conf = Config(
-        scheduler=SchedulerConfig(
-            strategy=strategy,
-            db_polling_interval_s=0.01,
-            qpu_polling_interval_s=0.01,
-            qpu_polling_timeout_s=-1,
-            # Set job_polling_timeout_s to a non-negative value to
-            # avoid infinite job status polling
-            job_polling_interval_s=0.05,
-            job_polling_timeout_s=0.5,  # <----- IMPORTANT TO THIS TEST
-        ),
-        qpu=QPUConfig(
-            uri=QPU_URI,
-            retry_max=10,
-            retry_sleep_s=0,
-        ),
-    )
+    conf: Config = build_conf(strategy, QPU_URI)
+    # Set job_polling_timeout_s to a non-negative value to
+    # avoid infinite job status polling
+    conf.scheduler.job_polling_timeout_s = 0.5  # <----- IMPORTANT TO THIS TEST
 
     ##################
     ### TEST SETUP ###
@@ -923,7 +835,7 @@ async def test_run_main_scheduler_job_client_error_timeout(
 
     async def wait_until_success(session: AsyncSession):
         while (await session.execute(stmt)).scalar() != N_JOBS:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(SUCCESS_CHECK_INTERVAL_S)
 
     ##################
     ### TEST RUN   ###
@@ -933,10 +845,8 @@ async def test_run_main_scheduler_job_client_error_timeout(
     main_task = asyncio.create_task(run_scheduler(db_engine, conf))
 
     async with db_session_maker() as session:
-        try:
-            async with asyncio.timeout(TEST_TIMEOUT_S):
-                await wait_until_success(session=session)
-        finally:
-            utils.raise_main_scheduler_task_exception(main_task)
-            n_done = (await session.execute(stmt)).scalar()
-            assert n_done == N_JOBS
+        async with utils.scheduler_task_timeout(TEST_TIMEOUT_S, main_task):
+            await wait_until_success(session=session)
+
+        n_done = (await session.execute(stmt)).scalar()
+        assert n_done == N_JOBS

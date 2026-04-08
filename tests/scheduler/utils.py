@@ -1,13 +1,15 @@
 """Test helper functions"""
 
-from asyncio import Task
+from asyncio import Task, timeout
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from warden.lib.config import Config, QPUConfig, SchedulerConfig
 from warden.lib.models import Job, Session
 
 
-async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int):
+async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int) -> None:
     """Creates n_jobs mock jobs to run in the warden db"""
     SLURM_USER_ID = "1234"
 
@@ -27,7 +29,6 @@ async def create_n_jobs(db_session_maker: async_sessionmaker, n_jobs: int):
         await session.commit()
 
 
-@staticmethod
 def raise_main_scheduler_task_exception(scheduler_task: Task) -> None:
     """
     The main scheduler task is an infinite loop that we don't await.
@@ -44,3 +45,33 @@ def raise_main_scheduler_task_exception(scheduler_task: Task) -> None:
         raise scheduler_task.exception()
     else:
         scheduler_task.cancel()
+
+
+@asynccontextmanager
+async def scheduler_task_timeout(delay: float, scheduler_task: Task):
+    """Manage test timeout and cleanup main scheduler task on test timeout"""
+
+    try:
+        async with timeout(delay):
+            yield
+    except TimeoutError:
+        # cleanup
+        raise_main_scheduler_task_exception(scheduler_task)
+
+
+def build_conf(strategy: str, qpu_uri: str):
+    return Config(
+        scheduler=SchedulerConfig(
+            strategy=strategy,
+            db_polling_interval_s=0.01,
+            qpu_polling_interval_s=0.01,
+            qpu_polling_timeout_s=-1,
+            job_polling_interval_s=0.01,
+            job_polling_timeout_s=-1,
+        ),
+        qpu=QPUConfig(
+            uri=qpu_uri,
+            retry_max=10,
+            retry_sleep_s=0,
+        ),
+    )
