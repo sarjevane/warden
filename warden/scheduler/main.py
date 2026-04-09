@@ -3,6 +3,7 @@
 import asyncio
 import logging.config
 import signal
+from asyncio import Queue
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
@@ -10,7 +11,6 @@ from warden.lib.config import Config
 from warden.lib.db.database import build_db_url
 from warden.lib.models import Job
 from warden.lib.qpu_client import QPUJobInfo
-from warden.scheduler.memqueue import MemQueue
 from warden.scheduler.strategy import schedulers
 from warden.scheduler.worker import LocalQPUWorker
 
@@ -51,7 +51,7 @@ async def run_scheduler(engine: AsyncEngine, conf: Config):
                 continue
             logger.info(f"Scheduling next job: {job.id}")
 
-            queue = MemQueue(maxsize=QUEUE_MAXSIZE)
+            queue: Queue[QPUJobInfo] = Queue(maxsize=QUEUE_MAXSIZE)
             # DB commit loop
             db_commit_task = asyncio.create_task(
                 async_commit(queue=queue, session=session, job=job)
@@ -77,7 +77,7 @@ async def run_scheduler(engine: AsyncEngine, conf: Config):
             logger.info(f"Job {job.id} ended with status: {job.status}")
 
 
-async def async_commit(queue: MemQueue, session: AsyncSession, job: Job):
+async def async_commit(queue: Queue, session: AsyncSession, job: Job):
     """Async coroutine loop to continuously Job info during execution"""
     while True:
         qpu_job = await queue.get()

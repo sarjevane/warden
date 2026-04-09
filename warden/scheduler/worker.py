@@ -3,6 +3,7 @@
 import asyncio
 import dataclasses
 import logging
+from asyncio import Queue
 from datetime import datetime
 
 from warden.lib.config import Config
@@ -13,7 +14,6 @@ from warden.lib.qpu_client import (
     QPUJobInfo,
 )
 from warden.scheduler.errors import QPUDownError
-from warden.scheduler.memqueue import MemQueue
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class LocalQPUWorker:
         return dataclasses.replace(qpu_job, status="ERROR")
 
     async def execute_job(
-        self, queue: MemQueue, nb_run: int, sequence: str, batch_id: str | None = None
+        self, queue: Queue, nb_run: int, sequence: str, batch_id: str | None = None
     ) -> None:
         """Execute job on the QPU"""
 
@@ -72,7 +72,7 @@ class LocalQPUWorker:
         if qpu_job.status not in ("CANCELED", "ERROR"):
             logger.info("Job execution done")
 
-    async def poll_qpu(self, queue: MemQueue, qpu_job: QPUJobInfo) -> QPUJobInfo:
+    async def poll_qpu(self, queue: Queue, qpu_job: QPUJobInfo) -> QPUJobInfo:
         """Check the QPU status"""
         try:
             polling_start = datetime.now()
@@ -101,7 +101,7 @@ class LocalQPUWorker:
 
     async def create_job(
         self,
-        queue: MemQueue,
+        queue: Queue,
         qpu_job: QPUJobInfo,
         nb_run: int,
         sequence: int,
@@ -121,7 +121,7 @@ class LocalQPUWorker:
         return qpu_job
 
     async def await_job_execution(
-        self, queue: MemQueue, qpu_job: QPUJobInfo
+        self, queue: Queue, qpu_job: QPUJobInfo
     ) -> QPUJobInfo:
         """Polling the job status untill completion, error, or cancellation"""
         polling_start = datetime.now()
