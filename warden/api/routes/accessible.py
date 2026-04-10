@@ -2,6 +2,7 @@ from logging import getLogger
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from warden.api.routes.dependencies.auth import verify_root
 from warden.api.routes.dependencies.db import DBSessionDep
@@ -37,16 +38,13 @@ async def update_accessible(
     await db_session.commit()
     await db_session.refresh(new_settings)
 
-    logger.info(
-        f"Accessibility toggled to: {payload.is_accessible} - {payload.message}"
-    )
     return AccessibleResponse(
         is_accessible=new_settings.is_accessible, message=new_settings.message
     )
 
 
 async def _get_latest_accessibility_settings(
-    db_session: DBSessionDep,
+    db_session: AsyncSession,
 ) -> AccessibilitySettings:
     """Get the most recent accessibility settings record in db"""
     result = await db_session.execute(
@@ -55,7 +53,7 @@ async def _get_latest_accessibility_settings(
     settings = result.scalar_one_or_none()
 
     if settings is None:
-        # Create initial record if none exists
+        # Create initial record with default behavior
         settings = AccessibilitySettings()
         db_session.add(settings)
         await db_session.commit()

@@ -17,12 +17,18 @@ async def test_accessible_nominal(client: AsyncClient, app):
 async def test_accessible_update(client: AsyncClient, app):
     """Test updating Warden accessibility and check the update:
 
-    1. Update the endpoint with root munge token and set 'is_accessible' to False
-    2. Get the accessibility status at /accessible
-    3. Update the endpoint again with root munge token and set 'is_accessible' to True
-    4. Get the accessibility status again
-
+    1. Get the accessibility status at /accessible before any update
+        to check default behavior
+    2. Update the endpoint with root munge token and set 'is_accessible' to False
+    3. Get the accessibility status at /accessible
+    4. Update the endpoint again with root munge token and set 'is_accessible' to True
+    5. Get the accessibility status again
     """
+
+    # Call the endpoint before any update for default behavior
+    response = await client.get("/accessible")
+    assert response.status_code == 200
+    assert response.json()["is_accessible"]
 
     # Update the endpoint
     payload = {"is_accessible": False, "message": "Updated"}
