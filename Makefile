@@ -39,7 +39,7 @@ update-accessible:
 
 	@if [ -z "$(IS_ACCESSIBLE)" ]; then \
 		echo "ERROR 'IS_ACCESSIBLE' is required."; \
-		echo "Usage: make update-accessible IS_ACCESSIBLE=true|false MESSAGE=\"Update\""; \
+		echo "Usage: make update-accessible IS_ACCESSIBLE=[true|false] MESSAGE=\"Update\""; \
 		exit 1; \
 	fi
 
