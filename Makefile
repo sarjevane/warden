@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: init-config install install-pg install-mariadb start ping migrate lint format
+.PHONY: init-config install install-pg install-mariadb start ping migrate lint format set-accessible
 
 # cluster admin commands
 
@@ -23,11 +23,33 @@ start: migrate
 start-scheduler:
 	python  -m warden.scheduler
 
-ping:
-	curl localhost:4207
-
 migrate:
 	$(MAKE) alembic ARGS="upgrade head"
+
+# cluster admin warden requests 
+
+URL ?= http://localhost:4207
+MESSAGE ?= Update
+
+define ACCESSIBLE_POST_JSON_PAYLOAD
+{"is_accessible": $(IS_ACCESSIBLE), "message": "$(MESSAGE)"}
+endef
+
+set-accessible:
+
+	@if [ -z "$(IS_ACCESSIBLE)" ]; then \
+		echo "ERROR 'IS_ACCESSIBLE' is required."; \
+		echo "Usage: make set-accessible IS_ACCESSIBLE=[true|false] MESSAGE=\"Update\""; \
+		exit 1; \
+	fi
+
+	curl -X POST $(URL)/accessible \
+		-H "X-Munge-Cred: $$(munge -n)" \
+		-H "Content-Type: application/json" \
+		-d '$(ACCESSIBLE_POST_JSON_PAYLOAD)'
+
+ping:
+	curl $(URL)
 
 # dev/contributors methods
 
