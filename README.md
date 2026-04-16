@@ -88,6 +88,14 @@ Warden's access to the PASQAL QPU can be configured through the YAML config or e
 | `qpu.uri`  | `WARDEN_QPU_URI`  | PASQAL QPU API uri      | `http://localhost:8005` | Yes      | `http://127.0.0.1:8005`   |
 
 
+The API server can also be configured to only accept new jobs from configured user IDs:
+
+| Path       | Description             | Default   | Required | Example Value |
+|------------|-------------------------|-----------|----------|---------------|
+| `api.authorized_users` | List of user IDs auhorized to create new jobs  | `[]` | Yes      | `["1000", "2000", "0"]`   |
+
+The default value `[]` allows all users to create new jobs.
+
 ### Database
 
 Warden supports the following databases:

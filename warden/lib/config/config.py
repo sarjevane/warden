@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 import httpx
 import yaml
-from pydantic import Field, PrivateAttr, model_validator
+from pydantic import BeforeValidator, Field, PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_PREFIX = "/api/v1"
@@ -68,9 +68,18 @@ class QPUConfig(BaseSettings):
         return self._client
 
 
+def coerce_to_str(v):
+    for item in v:
+        if type(item) not in (str, int):
+            raise ValueError("User uid must be a string or an integer")
+    return [str(item) for item in v]
+
+
 class APIConfig(BaseSettings):
     host: str
     port: int
+    # processing authorized_users as strings but allowing users to input numbers
+    authorized_users: Annotated[list[str], BeforeValidator(coerce_to_str)]
 
 
 class Config(BaseSettings):

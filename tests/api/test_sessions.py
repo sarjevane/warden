@@ -28,3 +28,29 @@ async def test_create_session_no_auth(client):
     payload = {"user_id": "1000", "slurm_job_id": "1"}
     response = await client.post("/sessions", json=payload)
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_session_non_authorized_user(client, app):
+    """Creating a session using a non-authorized user when authorized_users is not empty"""
+    # Setting authorized user list
+    app.state.authorized_users = ["2000"]
+
+    payload = {"user_id": "1000", "slurm_job_id": "1"}
+    with mock_munge_auth(app, uid=0):
+        response = await client.post("/sessions", json=payload)
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_session_authorized_user(client, app):
+    """Creating a session using an authorized user when authorized_users is not empty"""
+    # Setting authorized user list
+    app.state.authorized_users = ["1000"]
+
+    payload = {"user_id": "1000", "slurm_job_id": "1"}
+    with mock_munge_auth(app, uid=0):
+        response = await client.post("/sessions", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == payload["user_id"]
