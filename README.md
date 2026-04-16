@@ -81,7 +81,7 @@ The API server host and port are configurable through the YAML config or environ
 
 ### QPU 
 
-Warden's access to the PASQAL QPU can be configure through the YAML config or environment:
+Warden's access to the PASQAL QPU can be configured through the YAML config or environment:
 
 | Path       | Variable          | Description             | Default                 | Required | Example Value             |
 |------------|-------------------|-------------------------|-------------------------|----------|---------------------------|
