@@ -2,7 +2,7 @@ api:
   # API bind address
   host: 0.0.0.0
   # API bind port
-  port: 4207
+  port: 8006
 
 database:
   # echo: false # Optional, SQLAlchemy echo
@@ -62,7 +62,7 @@ scheduler:
 
 qpu:
   # Local Pasqal QPU API configuration
-  uri: http://localhost:4300
+  uri: http://localhost:8005
 
   # Request retry policy
   # Max number of retries to the QPU API in case of 

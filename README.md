@@ -76,7 +76,7 @@ The API server host and port are configurable through the YAML config or environ
 | Path       | Variable   | Description             | Default   | Required | Example Value |
 |------------|------------|-------------------------|-----------|----------|---------------|
 | `api.host` | `WARDEN_API_HOST` | API bind host address   | `0.0.0.0` | Yes      | `127.0.0.1`   |
-| `api.port` | `WARDEN_API_PORT` | API bind port           | `4207`    | Yes      | `8080`        |
+| `api.port` | `WARDEN_API_PORT` | API bind port           | `8006`    | Yes      | `8080`        |
 
 ### Database
 
