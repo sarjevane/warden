@@ -6,6 +6,7 @@ from pydantic import UUID4
 from sqlalchemy import Select
 
 from warden.api.routes.dependencies.auth import verify_root
+from warden.api.routes.dependencies.authorized_users import AuthorizedUsersDep
 from warden.api.routes.dependencies.db import DBSessionDep
 from warden.api.schemas.sessions import CreateSession, SessionResponse
 from warden.lib.models.sessions import Session
@@ -18,8 +19,14 @@ router = APIRouter(prefix="/sessions")
 async def create_session(
     payload: CreateSession,
     db_session: DBSessionDep,
+    authorized_users: AuthorizedUsersDep,
     _=Depends(verify_root),
 ) -> SessionResponse:
+    if authorized_users != [] and payload.user_id not in authorized_users:
+        logger.info(
+            f"Unauthorized user: {payload.user_id} attempting to create a session."
+        )
+        raise HTTPException(status_code=403, detail="User ID not authorized.")
     new_session = Session(
         user_id=str(payload.user_id),
         slurm_job_id=payload.slurm_job_id,
