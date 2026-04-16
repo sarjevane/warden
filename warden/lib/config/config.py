@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 import httpx
 import yaml
 from pydantic import Field, PrivateAttr, model_validator
+from pydantic import BeforeValidator, Field, PrivateAttr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_PREFIX = "/api/v1"
@@ -72,8 +73,16 @@ class APIConfig(BaseSettings):
     host: str
     port: int
 
+def coerce_to_str(v):
+    for item in v:
+        if type(item) not in (str, int):
+            raise ValueError("User uid must be a string or an integer")
+    return [str(item) for item in v]
+
+
 class UsersConfig(BaseSettings):
-    authorized_list: list[str] = Field(default=[])
+    # processing authorized_list as strings but allowing users to input numbers
+    authorized_list: Annotated[list[str], BeforeValidator(coerce_to_str)]
 
 
 class Config(BaseSettings):

@@ -72,7 +72,7 @@ qpu:
   retry_sleep_s: 1
 
 users:
-  # List of users authorized to access Warden
+  # List of user id authorized to access Warden, must be list of strings or integers.
   # If userlist is empty, all users are authorized.
   authorized_list: []
 
