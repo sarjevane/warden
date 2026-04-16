@@ -9,14 +9,15 @@ from httpx import ASGITransport, AsyncClient
 
 from warden.api.app import create_app
 from warden.api.routes.dependencies.auth import MungeIdentity, munge_identity
-from warden.lib.config.config import Config, SqliteConfig
+from warden.lib.config.config import Config, SqliteConfig, UsersConfig
 from warden.lib.db.database import Base
 
 
 @pytest.fixture
 def config():
     db_config = SqliteConfig(name="warden_tests.db", backend="sqlite", echo=False)
-    yield Config(database=db_config)
+    users = UsersConfig(authorized_list=[])
+    yield Config(database=db_config, users=users)
 
 
 @pytest_asyncio.fixture

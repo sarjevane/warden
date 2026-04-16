@@ -72,6 +72,9 @@ class APIConfig(BaseSettings):
     host: str
     port: int
 
+class UsersConfig(BaseSettings):
+    authorized_list: list[str] = Field(default=[])
+
 
 class Config(BaseSettings):
     api: APIConfig
@@ -79,6 +82,7 @@ class Config(BaseSettings):
     scheduler: SchedulerConfig
     logging: dict[str, Any]
     qpu: QPUConfig
+    users: UsersConfig
 
     model_config = SettingsConfigDict(
         env_file=".env",

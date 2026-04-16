@@ -71,6 +71,11 @@ qpu:
   # Time between request retries
   retry_sleep_s: 1
 
+users:
+  # List of users authorized to access Warden
+  # If userlist is empty, all users are authorized.
+  authorized_list: []
+
 logging:
   version: 1
   disable_existing_loggers: false

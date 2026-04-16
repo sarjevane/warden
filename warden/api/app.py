@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from warden.api.routes import accessible, jobs, qpu, sessions
 from warden.api.routes.dependencies.db import init_db
 from warden.api.routes.dependencies.qpu_client import init_qpu_client
+from warden.api.routes.dependencies.users import init_users
 from warden.lib.config import Config
 
 
@@ -16,6 +17,7 @@ def create_app(config: Config):
     )
     init_db(app, config.database)
     init_qpu_client(app, config.qpu)
+    init_users(app, config.users)
 
     app.include_router(jobs.router, tags=["jobs"])
     app.include_router(sessions.router, tags=["sessions"])
